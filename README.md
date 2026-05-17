@@ -6,7 +6,7 @@ Interactive web map viewer for Northern Territory (NT) road categories. Displays
 
 - Renders one or more road-category overlays on an interactive map.
 - Each overlay is drawn in a distinct colour with a labelled layer-control panel.
-- Clicking a road segment shows a popup with its road number, name, and category.
+- Clicking a road segment shows a popup with its road number, name, category, and the latitude/longitude of the click point (3 decimal places, displayed on separate lines). Popups opened via the DataTable show the midpoint coordinate of the road segment instead.
 - Map viewport auto-fits to the combined extent of all loaded overlays.
 - **Road DataTable** — injected immediately below the map after overlays load:
   - Three columns: **Number**, **Name** (linked), **Category** (colour-coded swatch).
@@ -14,7 +14,7 @@ Interactive web map viewer for Northern Territory (NT) road categories. Displays
   - **Filter by category** dropdown (exact-match) sits at the right of the controls bar.
   - **Show entries** select (10 / 25 / 50 / 100) sits between the search and category filter.
   - Default page size: 10 rows, sorted by Name ascending.
-  - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment.
+  - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment showing its midpoint coordinates.
   - The clicked road is highlighted in bold orange (`#ff7800`, weight 6) on the map; the previous highlight reverts to its original overlay colour on the next click.
 - Dev mode resolves overlay data from local GeoJSON files; production fetches from the NT Government API.
 
@@ -44,15 +44,15 @@ LICENSE
 
 ### `src/map.js` — module structure
 
-| Symbol                                           | Kind                        | Purpose                                                                                                                                            |
-| ------------------------------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OVERLAY_COLORS`                                 | `const string[]`            | 10-colour palette; assigned to overlays by index (wraps).                                                                                          |
-| `DEV_MOCKS`                                      | `const Record`              | Maps overlay IDs → lazy `import()` of local GeoJSON. Tree-shaken in prod.                                                                          |
-| `fetchOverlay(id)`                               | `async function`            | Returns GeoJSON for an overlay ID. Uses DEV_MOCKS in dev, fetches `https://nt.gov.au?a={id}` in prod.                                              |
-| `buildPopup(feature)`                            | `function`                  | Returns an HTML popup string from a GeoJSON feature's properties.                                                                                  |
-| `buildRoadTable(mapEl, mapId, map, roadRecords)` | `function`                  | Creates and appends the DataTable wrapper after `mapEl`. Wires search, category filter, highlight, and zoom interactions.                          |
-| `initMap(mapEl)`                                 | `async function`            | Full lifecycle for one map element: parse overlay IDs → create Leaflet map → fetch + render overlays → build road records → call `buildRoadTable`. |
-| Bootstrap                                        | `DOMContentLoaded` listener | Calls `initMap` for every `.map[data-overlays]` element on the page.                                                                               |
+| Symbol                                           | Kind                        | Purpose                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OVERLAY_COLORS`                                 | `const string[]`            | 10-colour palette; assigned to overlays by index (wraps).                                                                                                                                                                                                                                                      |
+| `DEV_MOCKS`                                      | `const Record`              | Maps overlay IDs → lazy `import()` of local GeoJSON. Tree-shaken in prod.                                                                                                                                                                                                                                      |
+| `fetchOverlay(id)`                               | `async function`            | Returns GeoJSON for an overlay ID. Uses DEV_MOCKS in dev, fetches `https://nt.gov.au?a={id}` in prod.                                                                                                                                                                                                          |
+| `buildPopup(feature, latlng)`                    | `function`                  | Returns an HTML popup string from a GeoJSON feature's properties and a `{lat, lng}` coordinate. For map clicks the click position is used; for DataTable-triggered opens the segment midpoint is used as fallback. Features without resolvable coordinates (e.g. empty `GeometryCollection`) receive no popup. |
+| `buildRoadTable(mapEl, mapId, map, roadRecords)` | `function`                  | Creates and appends the DataTable wrapper after `mapEl`. Wires search, category filter, highlight, and zoom interactions.                                                                                                                                                                                      |
+| `initMap(mapEl)`                                 | `async function`            | Full lifecycle for one map element: parse overlay IDs → create Leaflet map → fetch + render overlays → build road records → call `buildRoadTable`.                                                                                                                                                             |
+| Bootstrap                                        | `DOMContentLoaded` listener | Calls `initMap` for every `.map[data-overlays]` element on the page.                                                                                                                                                                                                                                           |
 
 ### Road record shape
 
@@ -102,7 +102,7 @@ Outputs a self-contained IIFE bundle (`dist/road-map.js`) and stylesheet (`dist/
 
 ## Data Format
 
-Each GeoJSON file must be a `FeatureCollection` of `LineString` features. The top-level `name` property is used as the layer label (hyphens replaced with spaces). Each feature's `properties` object must include:
+Each GeoJSON file must be a `FeatureCollection`. Features may be `LineString`, `MultiLineString`, or `GeometryCollection` (the first sub-geometry with coordinates is used for the popup midpoint). The top-level `name` property is used as the layer label (hyphens replaced with spaces). Each feature's `properties` object must include:
 
 | Property        | Type     | Description                         |
 | --------------- | -------- | ----------------------------------- |

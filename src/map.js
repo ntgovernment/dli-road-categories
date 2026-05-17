@@ -75,11 +75,17 @@ async function fetchOverlay(id) {
  * @param {import('geojson').Feature} feature - A GeoJSON `Feature` whose
  *   `properties` object contains `Road_Name`, `Road_Number`, and
  *   `Road_Category`.
+ * @param {{lat: number, lng: number}} latlng - Coordinate to display in the
+ *   popup (rendered as `Latitude: x.xxx` / `Longitude: x.xxx`, 3 d.p.).
+ *   Pass the Leaflet click event's `latlng` for map clicks, or derive
+ *   the segment midpoint as a fallback for DataTable-triggered opens. The
+ *   midpoint is resolved from `LineString`, `MultiLineString`, or the first
+ *   sub-geometry of a `GeometryCollection`.
  * @returns {string} HTML string suitable for `layer.bindPopup()`.
  */
-function buildPopup(feature) {
+function buildPopup(feature, latlng) {
   const p = feature.properties;
-  return `<strong>${p.Road_Name}</strong><br>Road No: ${p.Road_Number}<br>Category: ${p.Road_Category}`;
+  return `<strong>${p.Road_Name}</strong><br>Road No: ${p.Road_Number}<br>Category: ${p.Road_Category}<br>Latitude: ${latlng.lat.toFixed(3)}<br>Longitude: ${latlng.lng.toFixed(3)}`;
 }
 
 /**
@@ -272,7 +278,25 @@ async function initMap(mapEl) {
     const layer = L.geoJSON(data, {
       style: { color, weight: 3, opacity: 0.9 },
       onEachFeature(feature, lyr) {
-        lyr.bindPopup(buildPopup(feature));
+        // GeometryCollection has no top-level `coordinates`; fall back to the
+        // first sub-geometry that does (handles LineString and MultiLineString).
+        const geom = feature.geometry;
+        let coords = geom?.coordinates;
+        if (!coords && geom?.geometries) {
+          const sub = geom.geometries.find((g) => g.coordinates);
+          coords =
+            sub?.type === "MultiLineString"
+              ? sub.coordinates[0]
+              : sub?.coordinates;
+        }
+        if (coords?.length) {
+          const mid = coords[Math.floor((coords.length - 1) / 2)];
+          const midLatLng = { lat: mid[1], lng: mid[0] };
+          lyr.bindPopup(buildPopup(feature, midLatLng));
+          lyr.on("click", (e) => {
+            lyr.setPopupContent(buildPopup(feature, e.latlng));
+          });
+        }
 
         // Harvest road record for the datatable
         const p = feature.properties;
