@@ -35,6 +35,31 @@ const OVERLAY_COLORS = [
 ];
 
 /**
+ * Calculates the total geodesic length (in kilometres) of a LineString
+ * coordinate sequence using the Haversine formula.
+ *
+ * @param {Array<[number, number, number?]>} coords - Array of [lon, lat, z?] points.
+ * @returns {number} Total length in kilometres.
+ */
+function segmentLengthKm(coords) {
+  const R = 6371;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [lon1, lat1] = coords[i - 1];
+    const [lon2, lat2] = coords[i];
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    total += 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  return total;
+}
+
+/**
  * Lazily-evaluated dynamic imports for local GeoJSON fixtures used during
  * development. Vite statically analyses the import paths at build time.
  * The entire object is tree-shaken out in production builds because
@@ -81,11 +106,15 @@ async function fetchOverlay(id) {
  *   the segment midpoint as a fallback for DataTable-triggered opens. The
  *   midpoint is resolved from `LineString`, `MultiLineString`, or the first
  *   sub-geometry of a `GeometryCollection`.
+ * @param {number} [lengthKm=0] - Total geodesic length of the road in
+ *   kilometres (sum of all segments sharing the same road key), rendered
+ *   as `Length: x.x km` (1 d.p.). Computed by {@link segmentLengthKm} and
+ *   accumulated per road record in `onEachFeature`.
  * @returns {string} HTML string suitable for `layer.bindPopup()`.
  */
-function buildPopup(feature, latlng) {
+function buildPopup(feature, latlng, lengthKm = 0) {
   const p = feature.properties;
-  return `<strong>${p.Road_Name}</strong><br>Road No: ${p.Road_Number}<br>Category: ${p.Road_Category}<br>Latitude: ${latlng.lat.toFixed(3)}<br>Longitude: ${latlng.lng.toFixed(3)}`;
+  return `<strong>${p.Road_Name}</strong><br>Road No: ${p.Road_Number}<br>Category: ${p.Road_Category}<br>Length: ${lengthKm.toFixed(1)} km<br>Latitude: ${latlng.lat.toFixed(3)}<br>Longitude: ${latlng.lng.toFixed(3)}`;
 }
 
 /**
@@ -278,6 +307,10 @@ async function initMap(mapEl) {
     const layer = L.geoJSON(data, {
       style: { color, weight: 3, opacity: 0.9 },
       onEachFeature(feature, lyr) {
+        // Resolve road key up front so it is available in popup closures below.
+        const p = feature.properties;
+        const roadKey = String(p.Road_Number || p.Road_Name);
+
         // GeometryCollection has no top-level `coordinates`; fall back to the
         // first sub-geometry that does (handles LineString and MultiLineString).
         const geom = feature.geometry;
@@ -289,18 +322,23 @@ async function initMap(mapEl) {
               ? sub.coordinates[0]
               : sub?.coordinates;
         }
+        const segLen = coords?.length ? segmentLengthKm(coords) : 0;
         if (coords?.length) {
           const mid = coords[Math.floor((coords.length - 1) / 2)];
           const midLatLng = { lat: mid[1], lng: mid[0] };
-          lyr.bindPopup(buildPopup(feature, midLatLng));
+          // Use a lazy function so openPopup() (e.g. from the DataTable) always
+          // reads the fully-accumulated total once all features are loaded.
+          lyr.bindPopup(() =>
+            buildPopup(feature, midLatLng, roadRecords.get(roadKey)?.lengthKm ?? 0),
+          );
           lyr.on("click", (e) => {
-            lyr.setPopupContent(buildPopup(feature, e.latlng));
+            lyr.setPopupContent(
+              buildPopup(feature, e.latlng, roadRecords.get(roadKey)?.lengthKm ?? 0),
+            );
           });
         }
 
         // Harvest road record for the datatable
-        const p = feature.properties;
-        const roadKey = String(p.Road_Number || p.Road_Name);
         if (!roadRecords.has(roadKey)) {
           roadRecords.set(roadKey, {
             roadNumber: p.Road_Number != null ? String(p.Road_Number) : "",
@@ -309,9 +347,12 @@ async function initMap(mapEl) {
             color,
             originalStyle: { color, weight: 3, opacity: 0.9 },
             layers: [],
+            lengthKm: 0,
           });
         }
-        roadRecords.get(roadKey).layers.push(lyr);
+        const rec = roadRecords.get(roadKey);
+        rec.layers.push(lyr);
+        rec.lengthKm += segLen;
       },
     }).addTo(map);
 

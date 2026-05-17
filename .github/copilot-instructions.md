@@ -87,6 +87,7 @@ Map<
     color: string; // hex from OVERLAY_COLORS, assigned by overlay index
     originalStyle: { color: string; weight: 3; opacity: 0.9 };
     layers: L.Layer[]; // all Leaflet layers sharing this road key (multi-segment)
+    lengthKm: number; // cumulative geodesic length of all segments (Haversine), shown in popup as "X.X km"
   }
 >;
 ```
