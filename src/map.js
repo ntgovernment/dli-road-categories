@@ -12,6 +12,8 @@
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import DataTable from "datatables.net-dt";
+import "datatables.net-dt/css/dataTables.dataTables.css";
 
 /**
  * Ordered list of hex colours used to distinguish overlays.
@@ -81,16 +83,152 @@ function buildPopup(feature) {
 }
 
 /**
- * Initialises a Leaflet map inside a DOM element.
+ * Builds and injects a searchable, category-filterable road DataTable
+ * immediately after the map element.
  *
- * Steps performed:
- * 1. Reads overlay IDs from `mapEl.dataset.overlays` (JSON array).
- * 2. Sets explicit pixel dimensions on the container.
- * 3. Creates a Leaflet map with an OSM tile layer.
- * 4. Fetches all overlays concurrently via {@link fetchOverlay}.
- * 5. Renders each overlay as a GeoJSON layer with a colour-coded style.
- * 6. Adds a layer-control panel with styled checkboxes.
- * 7. Fits the viewport to the combined bounds of all valid overlays.
+ * @param {HTMLElement} mapEl - The map container element.
+ * @param {string} mapId - Unique ID used to scope element IDs.
+ * @param {import('leaflet').Map} map - The Leaflet map instance.
+ * @param {Map<string, object>} roadRecords - Road records keyed by road key.
+ */
+function buildRoadTable(mapEl, mapId, map, roadRecords) {
+  const records = Array.from(roadRecords.values());
+  if (records.length === 0) return;
+
+  // Inject shared styles once across all map instances on the page
+  if (!document.getElementById("rt-styles")) {
+    const styleEl = document.createElement("style");
+    styleEl.id = "rt-styles";
+    styleEl.textContent = [
+      ".road-table-wrap { margin-top: 1.5rem; }",
+      ".rt-controls-row { display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem; }",
+      ".rt-controls-row .dataTables_filter { float:none; }",
+      ".rt-controls-row .dataTables_length { float:none; }",
+      ".rt-cat-wrapper { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; margin-left:auto; }",
+      ".rt-cat-wrapper label { font-weight:normal; }",
+      ".rt-cat-select { padding:0.3rem 0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; }",
+      ".rt-swatch { display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:middle; }",
+      ".rt-num { color:#666; font-size:0.8em; margin-left:4px; }",
+      "a.rt-road-link { color:#003251; text-decoration:none; font-weight:500; }",
+      "a.rt-road-link:hover { text-decoration:underline; color:#d6410a; }",
+    ].join("\n");
+    document.head.appendChild(styleEl);
+  }
+
+  const categories = [...new Set(records.map((r) => r.category))].sort();
+
+  const wrap = document.createElement("div");
+  wrap.className = "road-table-wrap";
+
+  // Category select – injected into the DataTables controls row via initComplete
+  const catSelect = document.createElement("select");
+  catSelect.className = "rt-cat-select";
+  catSelect.innerHTML =
+    '<option value="">All categories</option>' +
+    categories.map((c) => `<option value="${c}">${c}</option>`).join("");
+
+  // Table element (DataTables populates tbody from JS data)
+  const tableId = `rt-${mapId}`;
+  const table = document.createElement("table");
+  table.id = tableId;
+  table.className = "display";
+  table.style.width = "100%";
+  table.innerHTML =
+    "<thead><tr><th>Number</th><th>Name</th><th>Category</th></tr></thead>";
+  wrap.appendChild(table);
+
+  mapEl.insertAdjacentElement("afterend", wrap);
+
+  // Initialise DataTable with JS data so column render callbacks control
+  // what is searched vs. displayed (avoids swatch HTML polluting searches)
+  const dt = new DataTable(`#${tableId}`, {
+    data: records,
+    columns: [
+      {
+        data: "roadNumber",
+      },
+      {
+        data: "roadName",
+        render(data, type, row) {
+          if (type !== "display") return data;
+          const key = encodeURIComponent(row.roadNumber || row.roadName);
+          return `<a href="#" class="rt-road-link" data-key="${key}">${data}</a>`;
+        },
+      },
+      {
+        data: "category",
+        render(data, type, row) {
+          if (type !== "display") return data; // filter/sort on plain category string
+          return `<span class="rt-swatch" style="background:${row.color}"></span>${data}`;
+        },
+      },
+    ],
+    pageLength: 10,
+    lengthMenu: [10, 25, 50, 100],
+    order: [[1, "asc"]],
+    dom: '<"rt-controls-row"fl>rtip',
+    initComplete() {
+      // Place category select between the search box and the length select
+      const row = table.parentElement.querySelector(".rt-controls-row");
+      const lengthDiv = row.querySelector(".dataTables_length");
+      const catWrapper = document.createElement("div");
+      catWrapper.className = "rt-cat-wrapper";
+      const catLabelEl = document.createElement("label");
+      catLabelEl.textContent = "Filter by category:";
+      catWrapper.appendChild(catLabelEl);
+      catWrapper.appendChild(catSelect);
+      row.appendChild(catWrapper);
+    },
+  });
+
+  // Wire category dropdown to DataTables exact-match column search
+  catSelect.addEventListener("change", () => {
+    const val = catSelect.value;
+    // Use anchored regex so "Category 1" doesn't match "Category 10"
+    dt.column(1)
+      .search(val ? `^${val}$` : "", true, false)
+      .draw();
+  });
+
+  // Highlight state – tracks which record is currently highlighted on the map
+  let highlightedRecord = null;
+
+  // Delegate clicks from DataTables-rendered rows to the table element
+  // (direct <a> binding would be lost when DataTables re-renders on page change)
+  table.addEventListener("click", (e) => {
+    const link = e.target.closest("a.rt-road-link");
+    if (!link) return;
+    e.preventDefault();
+
+    const key = decodeURIComponent(link.dataset.key);
+    const record = roadRecords.get(key);
+    if (!record) return;
+
+    // Reset previous highlight
+    if (highlightedRecord && highlightedRecord !== record) {
+      highlightedRecord.layers.forEach((lyr) =>
+        lyr.setStyle(highlightedRecord.originalStyle),
+      );
+    }
+
+    // Apply highlight to clicked road's segments
+    record.layers.forEach((lyr) =>
+      lyr.setStyle({ color: "#ff7800", weight: 6, opacity: 1.0 }),
+    );
+    highlightedRecord = record;
+
+    // Fit map to all segments of the road
+    const bounds = L.featureGroup(record.layers).getBounds();
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+
+    // Open popup on the first segment
+    record.layers[0].openPopup();
+  });
+}
+
+/**
+ * Initialises a Leaflet map inside a DOM element, then injects a road datatable
+ * below it via {@link buildRoadTable}.
  *
  * @param {HTMLElement} mapEl - Container element carrying a
  *   `data-overlays` attribute (JSON-encoded array of overlay IDs).
@@ -98,6 +236,7 @@ function buildPopup(feature) {
  */
 async function initMap(mapEl) {
   const overlayIds = JSON.parse(mapEl.dataset.overlays || "[]");
+  const mapId = mapEl.id || `map-${Math.random().toString(36).slice(2)}`;
 
   mapEl.style.height = "600px";
   mapEl.style.width = "100%";
@@ -122,6 +261,8 @@ async function initMap(mapEl) {
   const overlayLayers = {};
   const overlayColorList = [];
   let combinedBounds = null;
+  /** @type {Map<string, {roadNumber:string, roadName:string, category:string, color:string, originalStyle:object, layers:import('leaflet').Layer[]}>} */
+  const roadRecords = new Map();
 
   responses.forEach((data, i) => {
     if (!data) return;
@@ -132,6 +273,21 @@ async function initMap(mapEl) {
       style: { color, weight: 3, opacity: 0.9 },
       onEachFeature(feature, lyr) {
         lyr.bindPopup(buildPopup(feature));
+
+        // Harvest road record for the datatable
+        const p = feature.properties;
+        const roadKey = String(p.Road_Number || p.Road_Name);
+        if (!roadRecords.has(roadKey)) {
+          roadRecords.set(roadKey, {
+            roadNumber: p.Road_Number != null ? String(p.Road_Number) : "",
+            roadName: p.Road_Name || roadKey,
+            category: p.Road_Category || "",
+            color,
+            originalStyle: { color, weight: 3, opacity: 0.9 },
+            layers: [],
+          });
+        }
+        roadRecords.get(roadKey).layers.push(lyr);
       },
     }).addTo(map);
 
@@ -191,6 +347,8 @@ async function initMap(mapEl) {
     const zoom = Math.log2((mapHeight * 0.95) / latSpanPx0);
     map.setView(combinedBounds.getCenter(), zoom);
   }
+
+  buildRoadTable(mapEl, mapId, map, roadRecords);
 }
 
 /**
