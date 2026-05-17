@@ -140,11 +140,16 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
       ".rt-controls-row .dataTables_filter { float:none; }",
       ".rt-bottom-row { display:flex; align-items:center; margin-top:0.25rem; }",
       ".rt-bottom-row .dataTables_info { float:none; }",
-      ".rt-bottom-row .dataTables_paginate { float:none; }",
-      ".rt-bottom-row .dataTables_length { float:none; margin-left:auto; }",
-      ".rt-cat-wrapper { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; margin-left:auto; }",
+      ".rt-bottom-row .dataTables_paginate { float:none; margin-left:auto; }",
+      ".rt-bottom-row .dataTables_length { float:none; }",
+      ".rt-cat-wrapper { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }",
       ".rt-cat-wrapper label { font-weight:normal; }",
       ".rt-cat-select { padding:0.3rem 0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; }",
+      "@media (max-width:600px) {",
+      "  .rt-controls-row { flex-wrap:wrap; gap:0.5rem; }",
+      "  .rt-cat-wrapper { margin-left:0; width:100%; flex-direction:column; align-items:flex-start; gap:0.25rem; }",
+      "  .rt-cat-select { width:100%; }",
+      "}",
       ".rt-swatch { display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:middle; }",
       ".rt-num { color:#666; font-size:0.8em; margin-left:4px; }",
       "a.rt-road-link { color:#003251; text-decoration:none; font-weight:500; }",
@@ -204,7 +209,7 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
     pageLength: 10,
     lengthMenu: [10, 25, 50, 100],
     order: [[0, "asc"]],
-    dom: '<"rt-controls-row"f>rt<"rt-bottom-row"ipl>',
+    dom: '<"rt-controls-row"f>rt<"rt-bottom-row"lip>',
     initComplete() {
       const row = table.parentElement.querySelector(".rt-controls-row");
       const catWrapper = document.createElement("div");
@@ -221,7 +226,7 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
   catSelect.addEventListener("change", () => {
     const val = catSelect.value;
     // Use anchored regex so "Category 1" doesn't match "Category 10"
-    dt.column(1)
+    dt.column(2)
       .search(val ? `^${val}$` : "", true, false)
       .draw();
   });

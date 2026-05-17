@@ -11,8 +11,8 @@ Interactive web map viewer for Northern Territory (NT) road categories. Displays
 - **Road DataTable** — injected immediately below the map after overlays load:
   - Three columns: **Number**, **Name** (linked), **Category** (colour-coded swatch).
   - Global search box (DataTables built-in) searches across all columns.
-  - **Filter by category** dropdown (exact-match) sits at the right of the controls bar.
-  - **Show entries** select (10 / 25 / 50 / 100) sits at the bottom-right of the table.
+  - **Filter by category** dropdown (exact-match) sits at the right of the top controls bar; on mobile (≤600px) it stacks below its label and spans full width.
+  - **Show entries** select (10 / 25 / 50 / 100) sits at the bottom-left of the table; pagination buttons sit at the bottom-right.
   - Default page size: 10 rows, sorted by Number ascending.
   - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment showing its midpoint coordinates.
   - The clicked road is highlighted in bold orange (`#ff7800`, weight 6) on the map; the previous highlight reverts to its original overlay colour on the next click.
@@ -124,8 +124,9 @@ Each ID is fetched from `https://nt.gov.au?a={id}` in production. Multiple such 
 
 ## DataTable Behaviour Notes
 
-- **Search** — DataTables built-in; searches all three columns. The Name column's filter/sort value is the plain road name (no HTML), so searches work as expected.
-- **Category filter** — uses an anchored regex (`^Category 1$`) so `"Category 1"` never accidentally matches `"Category 10"`.
+- **Search** — DataTables built-in; searches all three columns. Each column's filter/sort value is plain text (no HTML), so searches work across Number, Name, and Category as expected.
+- **Category filter** — targets column 2 (Category) using an anchored regex (`^Category 1$`) so `"Category 1"` never accidentally matches `"Category 10"`. On mobile the label and dropdown stack vertically.
+- **Controls layout** — `dom: '<"rt-controls-row"f>rt<"rt-bottom-row"lip>'`. Top row: search (left) + category filter (right). Bottom row: show entries (left) + pagination (right).
 - **Highlight** — persists until the next row is clicked. Clicking the same row again re-applies zoom/popup without toggling the highlight off.
 - **CSS injection** — a `<style id="rt-styles">` block is appended to `<head>` once (guarded by ID check) to avoid duplicates when multiple maps are on the same page.
 - **Event delegation** — click events are delegated to the `<table>` element (not individual `<a>` tags) so they survive DataTables re-rendering rows on page/sort/filter changes.
