@@ -1,0 +1,16 @@
+{
+  "name": "dli-road-categories",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
