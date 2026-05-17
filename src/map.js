@@ -138,7 +138,10 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
       ".road-table-wrap { margin-top: 1.5rem; }",
       ".rt-controls-row { display:flex; align-items:center; gap:1rem; margin-bottom:0.5rem; }",
       ".rt-controls-row .dataTables_filter { float:none; }",
-      ".rt-controls-row .dataTables_length { float:none; }",
+      ".rt-bottom-row { display:flex; align-items:center; margin-top:0.25rem; }",
+      ".rt-bottom-row .dataTables_info { float:none; }",
+      ".rt-bottom-row .dataTables_paginate { float:none; }",
+      ".rt-bottom-row .dataTables_length { float:none; margin-left:auto; }",
       ".rt-cat-wrapper { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; margin-left:auto; }",
       ".rt-cat-wrapper label { font-weight:normal; }",
       ".rt-cat-select { padding:0.3rem 0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; }",
@@ -200,12 +203,10 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
     ],
     pageLength: 10,
     lengthMenu: [10, 25, 50, 100],
-    order: [[1, "asc"]],
-    dom: '<"rt-controls-row"fl>rtip',
+    order: [[0, "asc"]],
+    dom: '<"rt-controls-row"f>rt<"rt-bottom-row"ipl>',
     initComplete() {
-      // Place category select between the search box and the length select
       const row = table.parentElement.querySelector(".rt-controls-row");
-      const lengthDiv = row.querySelector(".dataTables_length");
       const catWrapper = document.createElement("div");
       catWrapper.className = "rt-cat-wrapper";
       const catLabelEl = document.createElement("label");
@@ -329,11 +330,19 @@ async function initMap(mapEl) {
           // Use a lazy function so openPopup() (e.g. from the DataTable) always
           // reads the fully-accumulated total once all features are loaded.
           lyr.bindPopup(() =>
-            buildPopup(feature, midLatLng, roadRecords.get(roadKey)?.lengthKm ?? 0),
+            buildPopup(
+              feature,
+              midLatLng,
+              roadRecords.get(roadKey)?.lengthKm ?? 0,
+            ),
           );
           lyr.on("click", (e) => {
             lyr.setPopupContent(
-              buildPopup(feature, e.latlng, roadRecords.get(roadKey)?.lengthKm ?? 0),
+              buildPopup(
+                feature,
+                e.latlng,
+                roadRecords.get(roadKey)?.lengthKm ?? 0,
+              ),
             );
           });
         }

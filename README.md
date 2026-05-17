@@ -12,8 +12,8 @@ Interactive web map viewer for Northern Territory (NT) road categories. Displays
   - Three columns: **Number**, **Name** (linked), **Category** (colour-coded swatch).
   - Global search box (DataTables built-in) searches across all columns.
   - **Filter by category** dropdown (exact-match) sits at the right of the controls bar.
-  - **Show entries** select (10 / 25 / 50 / 100) sits between the search and category filter.
-  - Default page size: 10 rows, sorted by Name ascending.
+  - **Show entries** select (10 / 25 / 50 / 100) sits at the bottom-right of the table.
+  - Default page size: 10 rows, sorted by Number ascending.
   - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment showing its midpoint coordinates.
   - The clicked road is highlighted in bold orange (`#ff7800`, weight 6) on the map; the previous highlight reverts to its original overlay colour on the next click.
 - Dev mode resolves overlay data from local GeoJSON files; production fetches from the NT Government API.
