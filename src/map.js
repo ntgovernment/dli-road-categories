@@ -225,9 +225,11 @@ function buildRoadTable(mapEl, mapId, map, roadRecords) {
   // Wire category dropdown to DataTables exact-match column search
   catSelect.addEventListener("change", () => {
     const val = catSelect.value;
-    // Use anchored regex so "Category 1" doesn't match "Category 10"
+    // Escape regex special characters (e.g. parentheses in category names like
+    // "Category 2 (NTG maintained section)") before building the anchored pattern.
+    const escaped = val.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     dt.column(2)
-      .search(val ? `^${val}$` : "", true, false)
+      .search(val ? `^${escaped}$` : "", true, false)
       .draw();
   });
 

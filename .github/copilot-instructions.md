@@ -108,7 +108,7 @@ Multiple GeoJSON features with the same `Road_Number` collapse into **one record
 | --------------- | -------------- |
 | Init            | `new DataTable('#rt-{mapId}', { data: records, columns: [...] })` — JS data, not HTML rows |
 | Search          | DataTables built-in `f` control; searches plain-text render values (not display HTML) |
-| Category filter | `<select>` appended into `.rt-controls-row` via `initComplete`; uses `dt.column(2).search('^…$', true, false).draw()` (anchored regex) |
+| Category filter | `<select>` appended into `.rt-controls-row` via `initComplete`; uses `dt.column(2).search('^…$', true, false).draw()` (anchored regex). The selected value is regex-escaped before building the pattern — category names may contain special characters such as `(` and `)` (e.g. `"Category 2 (NTG maintained section)"`). |
 | Controls layout | `dom: '<"rt-controls-row"f>rt<"rt-bottom-row"lip>'` — search left / category right in top row; entries per page left / pagination right in bottom row |
 | Column render   | `render(data, type, row)` — return plain text for `type !== 'display'` so search/sort are unaffected by HTML |
 | Click → zoom    | Delegated on `<table>` (not `<a>`) so it survives DataTables row re-renders on page/sort/filter changes |
