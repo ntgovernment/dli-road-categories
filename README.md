@@ -6,15 +6,15 @@ Interactive web map viewer for Northern Territory (NT) road categories. Displays
 
 - Renders one or more road-category overlays on an interactive map.
 - Each overlay is drawn in a distinct colour with a labelled layer-control panel.
-- Clicking a road segment shows a popup with its road number, name, and category.
+  - Clicking a road segment shows a popup with its road number, name, category, total road length (1 d.p., in km), and the latitude/longitude of the click point (3 decimal places, displayed on separate lines). Popups opened via the DataTable show the midpoint coordinate of the road segment instead.
 - Map viewport auto-fits to the combined extent of all loaded overlays.
 - **Road DataTable** — injected immediately below the map after overlays load:
   - Three columns: **Number**, **Name** (linked), **Category** (colour-coded swatch).
   - Global search box (DataTables built-in) searches across all columns.
-  - **Filter by category** dropdown (exact-match) sits at the right of the controls bar.
-  - **Show entries** select (10 / 25 / 50 / 100) sits between the search and category filter.
-  - Default page size: 10 rows, sorted by Name ascending.
-  - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment.
+  - **Filter by category** dropdown (exact-match) sits at the right of the top controls bar; on mobile (≤600px) it stacks below its label and spans full width.
+  - **Show entries** select (10 / 25 / 50 / 100) sits at the bottom-left of the table; pagination buttons sit at the bottom-right.
+  - Default page size: 10 rows, sorted by Number ascending.
+  - Clicking a road name zooms the map to fit all segments of that road (with 40 px padding, capped at zoom 15) and opens a popup on the first segment showing its midpoint coordinates.
   - The clicked road is highlighted in bold orange (`#ff7800`, weight 6) on the map; the previous highlight reverts to its original overlay colour on the next click.
 - Dev mode resolves overlay data from local GeoJSON files; production fetches from the NT Government API.
 
@@ -44,15 +44,15 @@ LICENSE
 
 ### `src/map.js` — module structure
 
-| Symbol                                           | Kind                        | Purpose                                                                                                                                            |
-| ------------------------------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OVERLAY_COLORS`                                 | `const string[]`            | 10-colour palette; assigned to overlays by index (wraps).                                                                                          |
-| `DEV_MOCKS`                                      | `const Record`              | Maps overlay IDs → lazy `import()` of local GeoJSON. Tree-shaken in prod.                                                                          |
-| `fetchOverlay(id)`                               | `async function`            | Returns GeoJSON for an overlay ID. Uses DEV_MOCKS in dev, fetches `https://nt.gov.au?a={id}` in prod.                                              |
-| `buildPopup(feature)`                            | `function`                  | Returns an HTML popup string from a GeoJSON feature's properties.                                                                                  |
-| `buildRoadTable(mapEl, mapId, map, roadRecords)` | `function`                  | Creates and appends the DataTable wrapper after `mapEl`. Wires search, category filter, highlight, and zoom interactions.                          |
-| `initMap(mapEl)`                                 | `async function`            | Full lifecycle for one map element: parse overlay IDs → create Leaflet map → fetch + render overlays → build road records → call `buildRoadTable`. |
-| Bootstrap                                        | `DOMContentLoaded` listener | Calls `initMap` for every `.map[data-overlays]` element on the page.                                                                               |
+| Symbol                                           | Kind                        | Purpose                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OVERLAY_COLORS`                                 | `const string[]`            | 10-colour palette; assigned to overlays by index (wraps).                                                                                                                                                                                                                                                      |
+| `DEV_MOCKS`                                      | `const Record`              | Maps overlay IDs → lazy `import()` of local GeoJSON. Tree-shaken in prod.                                                                                                                                                                                                                                      |
+| `fetchOverlay(id)`                               | `async function`            | Returns GeoJSON for an overlay ID. Uses DEV_MOCKS in dev, fetches `https://nt.gov.au?a={id}` in prod.                                                                                                                                                                                                          |
+| `buildPopup(feature, latlng, lengthKm?)`          | `function`                  | Returns an HTML popup string from a GeoJSON feature's properties, a `{lat, lng}` coordinate, and an optional total road length in km (defaults to 0, rendered as `Length: X.X km`). For map clicks the click position is used; for DataTable-triggered opens the segment midpoint is used as fallback. Features without resolvable coordinates (e.g. empty `GeometryCollection`) receive no popup. |
+| `buildRoadTable(mapEl, mapId, map, roadRecords)` | `function`                  | Creates and appends the DataTable wrapper after `mapEl`. Wires search, category filter, highlight, and zoom interactions.                                                                                                                                                                                      |
+| `initMap(mapEl)`                                 | `async function`            | Full lifecycle for one map element: parse overlay IDs → create Leaflet map → fetch + render overlays → build road records → call `buildRoadTable`.                                                                                                                                                             |
+| Bootstrap                                        | `DOMContentLoaded` listener | Calls `initMap` for every `.map[data-overlays]` element on the page.                                                                                                                                                                                                                                           |
 
 ### Road record shape
 
@@ -66,6 +66,7 @@ Each entry in the `roadRecords` `Map` (keyed by `String(Road_Number || Road_Name
   color:         string;          // hex, from OVERLAY_COLORS
   originalStyle: { color, weight: 3, opacity: 0.9 };
   layers:        L.Layer[];       // all GeoJSON segments sharing this road key
+  lengthKm:      number;          // cumulative geodesic length of all segments (Haversine)
 }
 ```
 
@@ -102,7 +103,7 @@ Outputs a self-contained IIFE bundle (`dist/road-map.js`) and stylesheet (`dist/
 
 ## Data Format
 
-Each GeoJSON file must be a `FeatureCollection` of `LineString` features. The top-level `name` property is used as the layer label (hyphens replaced with spaces). Each feature's `properties` object must include:
+Each GeoJSON file must be a `FeatureCollection`. Features may be `LineString`, `MultiLineString`, or `GeometryCollection` (the first sub-geometry with coordinates is used for the popup midpoint). The top-level `name` property is used as the layer label (hyphens replaced with spaces). Each feature's `properties` object must include:
 
 | Property        | Type     | Description                         |
 | --------------- | -------- | ----------------------------------- |
@@ -124,8 +125,9 @@ Each ID is fetched from `https://nt.gov.au?a={id}` in production. Multiple such 
 
 ## DataTable Behaviour Notes
 
-- **Search** — DataTables built-in; searches all three columns. The Name column's filter/sort value is the plain road name (no HTML), so searches work as expected.
-- **Category filter** — uses an anchored regex (`^Category 1$`) so `"Category 1"` never accidentally matches `"Category 10"`.
+- **Search** — DataTables built-in; searches all three columns. Each column's filter/sort value is plain text (no HTML), so searches work across Number, Name, and Category as expected.
+- **Category filter** — targets column 2 (Category) using an anchored regex (`^Category 1$`) so `"Category 1"` never accidentally matches `"Category 10"`. On mobile the label and dropdown stack vertically.
+- **Controls layout** — `dom: '<"rt-controls-row"f>rt<"rt-bottom-row"lip>'`. Top row: search (left) + category filter (right). Bottom row: show entries (left) + pagination (right).
 - **Highlight** — persists until the next row is clicked. Clicking the same row again re-applies zoom/popup without toggling the highlight off.
 - **CSS injection** — a `<style id="rt-styles">` block is appended to `<head>` once (guarded by ID check) to avoid duplicates when multiple maps are on the same page.
 - **Event delegation** — click events are delegated to the `<table>` element (not individual `<a>` tags) so they survive DataTables re-rendering rows on page/sort/filter changes.

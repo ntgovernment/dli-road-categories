@@ -87,6 +87,7 @@ Map<
     color: string; // hex from OVERLAY_COLORS, assigned by overlay index
     originalStyle: { color: string; weight: 3; opacity: 0.9 };
     layers: L.Layer[]; // all Leaflet layers sharing this road key (multi-segment)
+    lengthKm: number; // cumulative geodesic length of all segments (Haversine), shown in popup as "X.X km"
   }
 >;
 ```
@@ -103,15 +104,17 @@ Multiple GeoJSON features with the same `Road_Number` collapse into **one record
 
 ## DataTable wiring
 
-| Concern         | Implementation                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Init            | `new DataTable('#rt-{mapId}', { data: records, columns: [...] })` — JS data, not HTML rows                                             |
-| Search          | DataTables built-in `f` control; searches plain-text render values (not display HTML)                                                  |
-| Category filter | `<select>` appended into `.rt-controls-row` via `initComplete`; uses `dt.column(2).search('^…$', true, false).draw()` (anchored regex) |
-| Controls layout | `dom: '<"rt-controls-row"fl>rtip'` — search left, length middle, category select right (via `margin-left:auto`)                        |
-| Column render   | `render(data, type, row)` — return plain text for `type !== 'display'` so search/sort are unaffected by HTML                           |
-| Click → zoom    | Delegated on `<table>` (not `<a>`) so it survives DataTables row re-renders on page/sort/filter changes                                |
-| Highlight       | `lyr.setStyle({ color:'#ff7800', weight:6, opacity:1.0 })`; previous highlight reset via stored `highlightedRecord` ref                |
+| Concern         | Implementation |
+| --------------- | -------------- |
+| Init            | `new DataTable('#rt-{mapId}', { data: records, columns: [...] })` — JS data, not HTML rows |
+| Search          | DataTables built-in `f` control; searches plain-text render values (not display HTML) |
+| Category filter | `<select>` appended into `.rt-controls-row` via `initComplete`; uses `dt.column(2).search('^…$', true, false).draw()` (anchored regex). The selected value is regex-escaped before building the pattern — category names may contain special characters such as `(` and `)` (e.g. `"Category 2 (NTG maintained section)"`). |
+| Controls layout | `dom: '<"rt-controls-row"f>rt<"rt-bottom-row"lip>'` — search left / category right in top row; entries per page / showing info / pagination in bottom row with `gap:16px` between them |
+| Class names     | DataTables 2.x renders `.dt-length`, `.dt-info`, `.dt-paging`, `.dt-search`. CSS selectors target both 2.x and legacy 1.x names (`dataTables_length`, `dataTables_info`, etc.) with `!important` to override float-based defaults. |
+| Column render   | `render(data, type, row)` — return plain text for `type !== 'display'` so search/sort are unaffected by HTML |
+| Click → zoom    | Delegated on `<table>` (not `<a>`) so it survives DataTables row re-renders on page/sort/filter changes |
+| Highlight       | `lyr.setStyle({ color:'#ff7800', weight:6, opacity:1.0 })`; previous highlight reset via stored `highlightedRecord` ref |
+| Mobile (≤600px) | `.rt-controls-row` wraps; `.rt-cat-wrapper` goes full-width, stacks label above `<select>`; `<select>` stretches 100% |
 
 **Category filter column index is 2** (Number=0, Name=1, Category=2). Update the `dt.column()` call if columns are reordered.
 
